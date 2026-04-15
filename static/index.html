@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDD Workbench — Brillio AI CoE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Tokens ───────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #141414;
+  --surface:   #1c1c1c;
+  --surface2:  #242424;
+  --surface3:  #2c2c2c;
+  --border:    #2e2e2e;
+  --border2:   #383838;
+  --text:      #e8e4dc;
+  --text-2:    #a09a90;
+  --text-3:    #5a5550;
+  --accent:    #c8b878;        /* warm gold — editorial, not orange */
+  --accent-dim: rgba(200,184,120,.1);
+  --green:     #6ab87a;
+  --green-dim: rgba(106,184,122,.1);
+  --amber:     #d4943a;
+  --amber-dim: rgba(212,148,58,.1);
+  --red:       #c05858;
+  --red-dim:   rgba(192,88,88,.1);
+  --blue:      #6888c8;
+  --blue-dim:  rgba(104,136,200,.1);
+  --mono: 'Geist Mono', monospace;
+  --sans: 'Geist', sans-serif;
+  --serif: 'Instrument Serif', serif;
+  --radius: 2px;
+}
+
+html { font-size: 14px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  line-height: 1.6;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbars ───────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
+
+/* ── Nav ──────────────────────────────────────────────────────── */
+nav {
+  height: 48px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+  background: var(--bg);
+}
+
+.nav-brand {
+  font-family: var(--serif);
+  font-size: 17px;
+  color: var(--text);
+  letter-spacing: .01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-brand::after {
+  content: '';
+  display: block;
+  width: 1px;
+  height: 16px;
+  background: var(--border2);
+}
+
+.nav-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid rgba(200,184,120,.2);
+  padding: 2px 8px;
+}
+
+.nav-spacer { flex: 1; }
+
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.status-dot.ready  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.running { background: var(--amber); animation: blink 1s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .3; } }
+
+/* ── Shell ────────────────────────────────────────────────────── */
+.shell {
+  flex: 1;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+}
+
+/* ── Left panel ───────────────────────────────────────────────── */
+aside {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.aside-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Section label ────────────────────────────────────────────── */
+.label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+
+/* ── Spec textarea ────────────────────────────────────────────── */
+.spec-wrap { display: flex; flex-direction: column; }
+
+textarea {
+  width: 100%;
+  height: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.75;
+  padding: 12px;
+  resize: none;
+  outline: none;
+  transition: border-color .15s;
+}
+textarea:focus { border-color: var(--accent); }
+textarea::placeholder { color: var(--text-3); }
+
+/* ── Example pills ────────────────────────────────────────────── */
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.ex-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all .15s;
+}
+.ex-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Config selects ───────────────────────────────────────────── */
+.config-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.config-item { display: flex; flex-direction: column; gap: 5px; }
+
+select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 7px 8px;
+  outline: none;
+  cursor: pointer;
+}
+select:focus { border-color: var(--accent); }
+
+/* ── Spec health checklist ────────────────────────────────────── */
+.checklist { display: flex; flex-direction: column; gap: 5px; }
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+  transition: color .2s;
+}
+.check.pass { color: var(--green); }
+
+.check-box {
+  width: 13px; height: 13px;
+  border: 1px solid currentColor;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; flex-shrink: 0;
+  transition: all .2s;
+}
+.check.pass .check-box { background: var(--green-dim); }
+
+/* ── Run button ───────────────────────────────────────────────── */
+.aside-footer { padding: 16px 20px; border-top: 1px solid var(--border); }
+
+.run-btn {
+  width: 100%;
+  padding: 11px;
+  background: var(--accent);
+  border: none;
+  color: #1a1600;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background .15s;
+}
+.run-btn:hover:not(:disabled) { background: #daca90; }
+.run-btn:disabled { background: var(--surface3); color: var(--text-3); cursor: not-allowed; }
+
+.spinner {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(0,0,0,.2);
+  border-top-color: #1a1600;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  display: none;
+}
+.run-btn.loading .spinner { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Right panel ──────────────────────────────────────────────── */
+main {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Empty state ──────────────────────────────────────────────── */
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 40px;
+}
+
+.pipeline-viz {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.pv-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.pv-circle {
+  width: 44px; height: 44px;
+  border: 1px solid var(--border2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  color: var(--text-3);
+  background: var(--surface);
+}
+
+.pv-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.pv-edge {
+  width: 36px; height: 1px;
+  background: var(--border);
+  position: relative;
+  margin-bottom: 26px; flex-shrink: 0;
+}
+.pv-edge::after {
+  content: '▸';
+  position: absolute; right: -5px; top: -7px;
+  font-size: 8px; color: var(--border2);
+}
+
+.empty-title {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-style: italic;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.empty-sub {
+  font-size: 13px;
+  color: var(--text-3);
+  text-align: center;
+  max-width: 400px;
+  line-height: 1.7;
+}
+
+/* ── Output area ──────────────────────────────────────────────── */
+.output { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.output.visible { display: flex; }
+
+/* ── Progress steps ───────────────────────────────────────────── */
+.progress-bar {
+  display: none;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.progress-bar.visible { display: block; }
+
+.progress-steps {
+  display: flex;
+  gap: 0;
+}
+
+.ps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  position: relative;
+}
+
+.ps:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 13px; left: 50%;
+  width: 100%; height: 1px;
+  background: var(--border);
+  z-index: 0;
+  transition: background .3s;
+}
+.ps.done:not(:last-child)::after  { background: var(--green); }
+.ps.active:not(:last-child)::after { background: var(--amber); }
+
+.ps-bubble {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-3);
+  position: relative; z-index: 1;
+  transition: all .3s;
+}
+.ps.active .ps-bubble { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); animation: blink 1.2s ease-in-out infinite; }
+.ps.done  .ps-bubble  { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+
+.ps-name {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  text-align: center;
+  transition: color .3s;
+}
+.ps.active .ps-name { color: var(--amber); }
+.ps.done   .ps-name { color: var(--text-2); }
+
+/* ── Tab bar ──────────────────────────────────────────────────── */
+.tab-bar {
+  display: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0 24px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.tab-bar.visible { display: flex; }
+
+.tab {
+  padding: 12px 16px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  white-space: nowrap;
+  transition: all .15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--text-2); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.tab-n {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  padding: 1px 4px;
+}
+.tab.active .tab-n { color: var(--accent); border-color: rgba(200,184,120,.3); background: var(--accent-dim); }
+
+/* ── Panes ────────────────────────────────────────────────────── */
+.pane { display: none; flex: 1; overflow-y: auto; padding: 24px; }
+.pane.active { display: block; }
+
+/* ── Pane: Spec Breakdown ─────────────────────────────────────── */
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.bc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px;
+}
+
+.bc-head {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 10px;
+}
+
+.bc-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+.bc-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.bc-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+
+.bc-list li {
+  font-size: 11.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+  padding-left: 12px;
+  position: relative;
+}
+.bc-list li::before { content: '›'; position: absolute; left: 0; color: var(--text-3); }
+
+.completeness-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  display: flex; gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.65;
+}
+.completeness-box .icon { font-size: 16px; margin-top: 1px; flex-shrink: 0; }
+
+/* ── Pane: Code / Tests ───────────────────────────────────────── */
+.code-file {
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.code-header {
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.code-filename {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  display: flex; align-items: center; gap: 8px;
+}
+
+.lang-badge {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid rgba(200,184,120,.2);
+}
+
+.copy-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 4px 9px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all .15s;
+}
+.copy-btn:hover { border-color: var(--green); color: var(--green); }
+.copy-btn.copied { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+
+.code-body {
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.8;
+  padding: 16px;
+  white-space: pre-wrap;
+  color: var(--text);
+  max-height: calc(100vh - 260px);
+  overflow-y: auto;
+}
+
+/* ── Pane: Drift ──────────────────────────────────────────────── */
+.drift-summary {
+  display: flex; gap: 8px;
+  margin-bottom: 16px;
+}
+
+.drift-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .06em;
+  padding: 5px 12px;
+  border: 1px solid;
+}
+.drift-count.ok     { color: var(--green); border-color: rgba(106,184,122,.3); background: var(--green-dim); }
+.drift-count.warn   { color: var(--amber); border-color: rgba(212,148,58,.3);  background: var(--amber-dim); }
+.drift-count.fail   { color: var(--red);   border-color: rgba(192,88,88,.3);   background: var(--red-dim); }
+
+.drift-table { width: 100%; border-collapse: collapse; border: 1px solid var(--border); }
+
+.drift-table th {
+  background: var(--surface2);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 9px 12px;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid var(--border);
+}
+
+.drift-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.drift-table tr:last-child td { border-bottom: none; }
+.drift-table tr:hover td { background: var(--surface2); }
+
+.status-pill {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  display: inline-block;
+  white-space: nowrap;
+}
+.status-pill.ok   { color: var(--green); border: 1px solid rgba(106,184,122,.3); background: var(--green-dim); }
+.status-pill.warn { color: var(--amber); border: 1px solid rgba(212,148,58,.3);  background: var(--amber-dim); }
+.status-pill.fail { color: var(--red);   border: 1px solid rgba(192,88,88,.3);   background: var(--red-dim); }
+
+.clause-cell { color: var(--text); font-size: 12px; }
+.finding-cell { color: var(--text-2); font-size: 11.5px; }
+.ref-cell { font-family: var(--mono); font-size: 10px; color: var(--text-3); }
+
+/* ── Error ────────────────────────────────────────────────────── */
+.error-box {
+  padding: 14px 16px;
+  border: 1px solid rgba(192,88,88,.35);
+  background: var(--red-dim);
+  color: #e07070;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+/* ── Footer strip ─────────────────────────────────────────────── */
+.footer-strip {
+  display: none;
+  padding: 8px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+}
+.footer-strip.visible { display: flex; }
+
+.fs-meta {
+  display: flex; gap: 20px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+.fs-meta span { color: var(--text-2); }
+
+.fs-right {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* ── Section heading inside pane ─────────────────────────────── */
+.pane-section-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.pane-section-label::after {
+  content: '';
+  flex: 1; height: 1px;
+  background: var(--border);
+}
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  body { overflow: auto; }
+  .shell { grid-template-columns: 1fr; height: auto; }
+  aside { height: auto; }
+  main { min-height: 80vh; }
+  .breakdown-grid { grid-template-columns: 1fr 1fr; }
+  .output { display: flex; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">SDD Workbench</div>
+  <div class="nav-tag">Brillio AI CoE</div>
+  <div class="nav-spacer"></div>
+  <div class="nav-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Ready</span>
+  </div>
+</nav>
+
+<!-- SHELL -->
+<div class="shell">
+
+  <!-- LEFT -->
+  <aside>
+    <div class="aside-body">
+
+      <!-- Spec -->
+      <div class="spec-wrap">
+        <div class="label">Specification</div>
+        <textarea id="specInput" placeholder="Describe what you want to build.
+
+Focus on: inputs, outputs, constraints, and edge cases. Not implementation details."></textarea>
+        <div class="examples">
+          <button class="ex-btn" onclick="loadEx('rate')">Rate Limiter</button>
+          <button class="ex-btn" onclick="loadEx('validator')">Input Validator</button>
+          <button class="ex-btn" onclick="loadEx('search')">Search Filter</button>
+          <button class="ex-btn" onclick="loadEx('retry')">Retry Backoff</button>
+          <button class="ex-btn" onclick="loadEx('paginate')">Pagination</button>
+        </div>
+      </div>
+
+      <!-- Config -->
+      <div>
+        <div class="label">Configuration</div>
+        <div class="config-row">
+          <div class="config-item">
+            <div class="label" style="margin:0 0 4px">Language</div>
+            <select id="langSel">
+              <option>Python</option>
+              <option>TypeScript</option>
+              <option>JavaScript</option>
+              <option>Java</option>
+              <option>Go</option>
+            </select>
+          </div>
+          <div class="config-item">
+            <div class="label" style="margin:0 0 4px">Test Framework</div>
+            <select id="frameSel">
+              <option>pytest</option>
+              <option>Jest</option>
+              <option>JUnit 5</option>
+              <option>Go test</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Spec health -->
+      <div>
+        <div class="label">Spec Discipline</div>
+        <div class="checklist">
+          <div class="check" id="chk-inputs">  <div class="check-box">○</div>Inputs defined</div>
+          <div class="check" id="chk-outputs"> <div class="check-box">○</div>Outputs defined</div>
+          <div class="check" id="chk-edges">   <div class="check-box">○</div>Edge cases present</div>
+          <div class="check" id="chk-constraints"><div class="check-box">○</div>Constraints stated</div>
+          <div class="check" id="chk-clean">   <div class="check-box">○</div>No implementation leakage</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="aside-footer">
+      <button class="run-btn" id="runBtn" onclick="run()">
+        <div class="spinner"></div>
+        <span id="runLabel">▶ &nbsp;Run Pipeline</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- RIGHT -->
+  <main>
+
+    <!-- Empty state -->
+    <div class="empty" id="emptyState">
+      <div class="pipeline-viz">
+        <div class="pv-node"><div class="pv-circle">📝</div><div class="pv-label">Spec</div></div>
+        <div class="pv-edge"></div>
+        <div class="pv-node"><div class="pv-circle">🔍</div><div class="pv-label">Breakdown</div></div>
+        <div class="pv-edge"></div>
+        <div class="pv-node"><div class="pv-circle">⚙️</div><div class="pv-label">Code</div></div>
+        <div class="pv-edge"></div>
+        <div class="pv-node"><div class="pv-circle">🧪</div><div class="pv-label">Tests</div></div>
+        <div class="pv-edge"></div>
+        <div class="pv-node"><div class="pv-circle">📊</div><div class="pv-label">Drift</div></div>
+      </div>
+      <div class="empty-title">Write a spec. Get code you can trust.</div>
+      <div class="empty-sub">Spec Analyst → Code Builder → Test Writer → Drift Monitor.<br>Every output anchored to the original spec.</div>
+    </div>
+
+    <!-- Output -->
+    <div class="output" id="outputArea">
+
+      <!-- Progress -->
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-steps">
+          <div class="ps" id="ps1"><div class="ps-bubble">1</div><div class="ps-name">Spec Analyst</div></div>
+          <div class="ps" id="ps2"><div class="ps-bubble">2</div><div class="ps-name">Code Builder</div></div>
+          <div class="ps" id="ps3"><div class="ps-bubble">3</div><div class="ps-name">Test Writer</div></div>
+          <div class="ps" id="ps4"><div class="ps-bubble">4</div><div class="ps-name">Drift Monitor</div></div>
+          <div class="ps" id="ps5"><div class="ps-bubble">5</div><div class="ps-name">Done</div></div>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tab-bar" id="tabBar">
+        <div class="tab active" onclick="switchTab('spec')"  id="t-spec"> Spec Breakdown  <span class="tab-n">01</span></div>
+        <div class="tab"        onclick="switchTab('code')"  id="t-code"> Implementation  <span class="tab-n">02</span></div>
+        <div class="tab"        onclick="switchTab('tests')" id="t-tests">Test Suite      <span class="tab-n">03</span></div>
+        <div class="tab"        onclick="switchTab('drift')" id="t-drift">Drift Analysis  <span class="tab-n">04</span></div>
+      </div>
+
+      <!-- Panes -->
+      <div class="pane active" id="p-spec"></div>
+      <div class="pane"        id="p-code"></div>
+      <div class="pane"        id="p-tests"></div>
+      <div class="pane"        id="p-drift"></div>
+
+    </div>
+
+    <!-- Footer strip -->
+    <div class="footer-strip" id="footerStrip">
+      <div class="fs-meta">
+        <div>Lang: <span id="fsMeta-lang">—</span></div>
+        <div>Framework: <span id="fsMeta-frame">—</span></div>
+        <div>Iterations: <span id="fsMeta-iter">—</span></div>
+        <div>Lint: <span id="fsMeta-lint">—</span></div>
+      </div>
+      <div class="fs-right">Brillio SDD Workbench · Phase 1</div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Example specs ────────────────────────────────────────────────
+const EXAMPLES = {
+  rate: `Context: API gateway middleware — warehouse management system.
+
+Build a rate limiter function that:
+- Accepts: user_id (string), action_type ("query" | "export" | "write")
+- Limits: query=10/min, export=3/min, write=30/min per user
+- Returns: { allowed: bool, remaining: int, reset_at: ISO timestamp }
+- Tracks in-memory per user+action key; resets every 60s from first request
+
+Edge cases:
+- Unknown action_type → default to "query" limits
+- Empty user_id → raise ValueError
+- Concurrent calls for same user must not corrupt counters`,
+
+  validator: `Context: Agent onboarding API — Anywhere Real Estate platform.
+
+Validate a real estate agent registration object with fields:
+email, phone, license_number, state_code, years_experience.
+
+Rules:
+- email: valid RFC 5321 format, max 254 chars
+- phone: US format, 10 digits after stripping non-numeric chars
+- license_number: 6–12 alphanumeric chars
+- state_code: valid 2-letter US state abbreviation
+- years_experience: integer 0–50 inclusive
+
+Returns: { is_valid: bool, errors: { field: [messages] } }
+
+Edge cases:
+- Missing fields must be flagged individually
+- years_experience as string "5" should coerce; fail on non-numeric`,
+
+  search: `Context: Property listing search — Anywhere Real Estate platform.
+
+Build a search and filter function.
+Accepts: listings (list of dicts), filters (dict, all optional).
+
+Filter fields: keyword (searches title + address + description),
+min_price, max_price, bedrooms_min, bathrooms_min,
+property_type (enum: condo | house | townhouse | multi-family),
+zip_codes (list of strings), listed_within_days (int).
+
+Returns: filtered list sorted by relevance score desc, then listing_date desc.
+
+Edge cases:
+- Empty listings → return [], no error
+- Invalid property_type → silently ignore
+- Negative price in filter → raise ValueError with clear message
+- listed_within_days=0 → return only today's listings`,
+
+  retry: `Context: Financial transaction API client — JM Family Enterprises.
+
+Build a retry-with-exponential-backoff wrapper.
+Accepts: fn (callable), max_retries=3, base_delay_ms=500,
+multiplier=2.0, retryable_exceptions=[TimeoutError, ConnectionError].
+
+Behaviour:
+- On retryable exception: wait base_delay * multiplier^attempt ms
+- Add ±20% random jitter to prevent thundering herd
+- Log each retry: attempt number, exception type, delay used
+- After max_retries exhausted, re-raise last exception
+- Non-retryable exceptions propagate immediately
+
+Edge cases:
+- max_retries=0 → execute once, no retry
+- Success on first call → no delay
+- Jitter must not produce negative delay`,
+
+  paginate: `Build a pagination metadata helper for Brillio's shared component library.
+Accepts: total_items (int), page (int), page_size (int, default 20).
+
+Returns: { current_page, page_size, total_pages, total_items,
+           has_previous, has_next, start_index, end_index } (1-based indices).
+
+Normalisation:
+- page < 1 → clamp to 1
+- page_size < 1 → clamp to 10; page_size > 200 → clamp to 200
+- page > total_pages → clamp to total_pages (or 1 if 0 items)
+- total_items < 0 → raise ValueError
+
+Edge cases:
+- total_items=0 → total_pages=0, start/end_index=0, no next/prev
+- Exactly divisible (20 items, page_size 10) → total_pages=2`
+};
+
+let activeEs = null;
+
+function loadEx(key) {
+  document.getElementById('specInput').value = EXAMPLES[key];
+  checkSpec();
+}
+
+// ── Spec discipline checklist ────────────────────────────────────
+function checkSpec() {
+  const t = document.getElementById('specInput').value.toLowerCase();
+  setChk('chk-inputs',      ['accept', 'input', 'takes', 'receives', 'parameter', 'argument']);
+  setChk('chk-outputs',     ['returns', 'return', 'output', 'result', 'response', 'produces']);
+  setChk('chk-edges',       ['edge case', 'empty', 'null', 'invalid', 'zero', 'negative', 'missing', 'boundary']);
+  setChk('chk-constraints', ['must', 'max', 'min', 'limit', 'only', 'required', 'clamp', 'default', 'rule']);
+  setChkInverse('chk-clean',['def ', 'function ', 'class ', 'var ', 'let ', 'const ', 'import ', 'for loop', 'if statement']);
+}
+
+function setChk(id, patterns) {
+  const t = document.getElementById('specInput').value.toLowerCase();
+  applyChk(id, patterns.some(p => t.includes(p)));
+}
+function setChkInverse(id, patterns) {
+  const t = document.getElementById('specInput').value.toLowerCase();
+  applyChk(id, !patterns.some(p => t.includes(p)));
+}
+function applyChk(id, pass) {
+  const el = document.getElementById(id);
+  el.classList.toggle('pass', pass);
+  el.querySelector('.check-box').textContent = pass ? '✓' : '○';
+}
+
+document.getElementById('specInput').addEventListener('input', checkSpec);
+
+// ── Tab switch ───────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('t-' + name).classList.add('active');
+  document.getElementById('p-' + name).classList.add('active');
+}
+
+// ── Progress stepper ─────────────────────────────────────────────
+function setStep(n) {
+  for (let i = 1; i <= 5; i++) {
+    const el = document.getElementById('ps' + i);
+    el.classList.remove('active', 'done');
+    const bubble = el.querySelector('.ps-bubble');
+    if (i < n)      { el.classList.add('done');   bubble.textContent = '✓'; }
+    else if (i === n){ el.classList.add('active'); bubble.textContent = i; }
+    else             {                             bubble.textContent = i; }
+  }
+}
+
+// ── Copy ─────────────────────────────────────────────────────────
+function copyCode(codeId, btnEl) {
+  const text = document.getElementById(codeId).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btnEl.textContent = 'Copied ✓';
+    btnEl.classList.add('copied');
+    setTimeout(() => { btnEl.textContent = 'Copy'; btnEl.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ── Status dot ───────────────────────────────────────────────────
+function setStatus(state, text) {
+  const dot = document.getElementById('statusDot');
+  dot.className = 'status-dot ' + state;
+  document.getElementById('statusText').textContent = text;
+}
+
+// ── Escape HTML ──────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Render helpers ───────────────────────────────────────────────
+const BC_COLORS = {
+  inputs:'#6888c8', outputs:'#6ab87a', constraints:'#d4943a',
+  edge_cases:'#c8b878', acceptance_criteria:'#a070c8', risks_gaps:'#c05858'
+};
+const BC_LABELS = {
+  inputs:'Inputs', outputs:'Outputs', constraints:'Constraints',
+  edge_cases:'Edge Cases', acceptance_criteria:'Acceptance Criteria', risks_gaps:'Risks / Gaps'
+};
+
+function renderSpec(data) {
+  const sb = data.spec_breakdown || {};
+  const cards = Object.entries(BC_LABELS).map(([k, label]) => {
+    const items = sb[k] || [];
+    const lis = items.length
+      ? items.map(i => `<li>${esc(i)}</li>`).join('')
+      : `<li style="color:var(--text-3);font-style:italic">Not specified</li>`;
+    return `<div class="bc">
+      <div class="bc-head">
+        <div class="bc-dot" style="background:${BC_COLORS[k]}"></div>
+        <div class="bc-title">${label}</div>
+      </div>
+      <ul class="bc-list">${lis}</ul>
+    </div>`;
+  }).join('');
+
+  const note = data.spec_completeness_comment ? `
+    <div class="completeness-box">
+      <div class="icon">📋</div>
+      <div>${esc(data.spec_completeness_comment)}</div>
+    </div>` : '';
+
+  document.getElementById('p-spec').innerHTML =
+    `<div class="pane-section-label">Structured Spec Breakdown</div>
+     <div class="breakdown-grid">${cards}</div>${note}`;
+}
+
+function renderCode(code, lang) {
+  const id = 'code-impl';
+  document.getElementById('p-code').innerHTML = `
+    <div class="pane-section-label">Generated Implementation</div>
+    <div class="code-file">
+      <div class="code-header">
+        <div class="code-filename">implementation <span class="lang-badge">${esc(lang)}</span></div>
+        <button class="copy-btn" onclick="copyCode('${id}', this)">Copy</button>
+      </div>
+      <div class="code-body" id="${id}">${esc(code||'')}</div>
+    </div>`;
+}
+
+function renderTests(tests, framework) {
+  const id = 'code-tests';
+  document.getElementById('p-tests').innerHTML = `
+    <div class="pane-section-label">Spec-Anchored Test Suite</div>
+    <div class="code-file">
+      <div class="code-header">
+        <div class="code-filename">test_suite <span class="lang-badge">${esc(framework)}</span></div>
+        <button class="copy-btn" onclick="copyCode('${id}', this)">Copy</button>
+      </div>
+      <div class="code-body" id="${id}">${esc(tests||'')}</div>
+    </div>`;
+}
+
+function renderDrift(items) {
+  if (!items?.length) {
+    document.getElementById('p-drift').innerHTML = '<div class="error-box">No drift analysis returned.</div>';
+    return;
+  }
+  const ok   = items.filter(d => d.status === 'OK').length;
+  const warn = items.filter(d => d.status === 'WARN').length;
+  const fail = items.filter(d => d.status === 'FAIL').length;
+
+  const summary = `<div class="drift-summary">
+    <div class="drift-count ok">✓ ${ok} OK</div>
+    ${warn ? `<div class="drift-count warn">⚠ ${warn} WARN</div>` : ''}
+    ${fail ? `<div class="drift-count fail">✗ ${fail} FAIL</div>` : ''}
+  </div>`;
+
+  const rows = items.map((d,i) => `
+    <tr>
+      <td><span class="status-pill ${d.status.toLowerCase()}">${esc(d.status)}</span></td>
+      <td class="clause-cell">${esc(d.spec_clause)}</td>
+      <td class="finding-cell">${esc(d.finding)}</td>
+      <td class="ref-cell">AC-${String(i+1).padStart(2,'0')}</td>
+    </tr>`).join('');
+
+  document.getElementById('p-drift').innerHTML = `
+    <div class="pane-section-label">Spec → Code Traceability</div>
+    ${summary}
+    <table class="drift-table">
+      <thead><tr><th>Status</th><th>Spec Clause</th><th>Finding</th><th>Ref</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Main run ─────────────────────────────────────────────────────
+function run() {
+  const spec = document.getElementById('specInput').value.trim();
+  if (!spec) return;
+
+  const lang  = document.getElementById('langSel').value;
+  const frame = document.getElementById('frameSel').value;
+  const btn   = document.getElementById('runBtn');
+
+  // Close any in-flight stream before starting a new one
+  if (activeEs) { activeEs.close(); activeEs = null; }
+
+  // UI: loading state
+  btn.disabled = true;
+  btn.classList.add('loading');
+  document.getElementById('runLabel').textContent = 'Running…';
+  setStatus('running', 'Running pipeline');
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('outputArea').classList.add('visible');
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('tabBar').classList.remove('visible');
+  document.getElementById('footerStrip').classList.remove('visible');
+
+  // Clear panes
+  ['spec','code','tests','drift'].forEach(p => {
+    document.getElementById('p-'+p).innerHTML = '';
+    document.getElementById('p-'+p).classList.remove('active');
+  });
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+
+  setStep(1);
+
+  const params = new URLSearchParams({ spec, language: lang, test_framework: frame });
+  const es = new EventSource('/api/run/stream?' + params);
+  activeEs = es;
+
+  function resetBtn() {
+    btn.disabled = false;
+    btn.classList.remove('loading');
+    document.getElementById('runLabel').textContent = '▶ \u00a0Run Pipeline';
+  }
+
+  function showError(msg) {
+    document.getElementById('progressBar').classList.remove('visible');
+    document.getElementById('tabBar').classList.add('visible');
+    document.getElementById('p-spec').innerHTML = `<div class="error-box">Error: ${esc(msg)}</div>`;
+    document.getElementById('t-spec').classList.add('active');
+    document.getElementById('p-spec').classList.add('active');
+    setStatus('', 'Error');
+    resetBtn();
+  }
+
+  es.onmessage = function(event) {
+    let msg;
+    try { msg = JSON.parse(event.data); } catch { return; }
+
+    if (msg.type === 'node_done') {
+      const { node, data } = msg;
+
+      if (node === 'parse_spec') {
+        setStep(2);
+
+      } else if (node === 'generate_code') {
+        if (data.lint_passed || data.iteration_count >= 3) {
+          document.querySelector('#ps2 .ps-name').textContent = 'Code Builder';
+          setStep(3);
+        } else {
+          // Lint failed, retries remain — stay on step 2
+          setStep(2);
+          if (data.iteration_count > 1) {
+            document.querySelector('#ps2 .ps-name').textContent = `Code Builder \u21ba${data.iteration_count}`;
+          }
+        }
+
+      } else if (node === 'generate_tests') {
+        setStep(4);
+
+      } else if (node === 'run_drift') {
+        setStep(5);
+      }
+
+    } else if (msg.type === 'done') {
+      es.close(); activeEs = null;
+      const data = msg.data;
+
+      renderSpec(data);
+      renderCode(data.implementation, lang);
+      renderTests(data.tests, frame);
+      renderDrift(data.drift_analysis);
+
+      document.getElementById('progressBar').classList.remove('visible');
+      document.getElementById('tabBar').classList.add('visible');
+      document.getElementById('footerStrip').classList.add('visible');
+      document.getElementById('t-spec').classList.add('active');
+      document.getElementById('p-spec').classList.add('active');
+
+      const m = data._meta || {};
+      document.getElementById('fsMeta-lang').textContent  = lang;
+      document.getElementById('fsMeta-frame').textContent = frame;
+      document.getElementById('fsMeta-iter').textContent  = m.iterations ?? '—';
+      document.getElementById('fsMeta-lint').textContent  = m.lint_passed ? '✓ passed' : '⚠ warnings';
+
+      setStatus('ready', 'Pipeline complete');
+      resetBtn();
+
+    } else if (msg.type === 'error') {
+      es.close(); activeEs = null;
+      showError(msg.message);
+    }
+  };
+
+  es.onerror = function() {
+    if (es.readyState === EventSource.CLOSED) return;
+    es.close(); activeEs = null;
+    showError('Connection lost. Check the server.');
+  };
+}
+</script>
+</body>
+</html>

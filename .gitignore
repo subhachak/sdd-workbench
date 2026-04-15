@@ -1,0 +1,28 @@
+# Secrets
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# DB (Phase 3 checkpointer)
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cursor / Claude Code / editors
+.cursor/
+.claude/
+.vscode/
+*.swp
