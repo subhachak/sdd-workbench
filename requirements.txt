@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 pydantic==2.10.3
 pyflakes==3.2.0
 langgraph-checkpoint-sqlite
+aiosqlite

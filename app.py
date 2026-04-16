@@ -201,11 +201,13 @@ async def run_sdd_stream(
 
 @app.get("/api/runs")
 def list_runs():
+    if not Path(CHECKPOINTS_DB).exists():
+        return []
     try:
         conn = sqlite3.connect(CHECKPOINTS_DB)
         rows = conn.execute(
-            "SELECT DISTINCT thread_id, created_at FROM checkpoints "
-            "ORDER BY created_at DESC LIMIT 20"
+            "SELECT DISTINCT thread_id, checkpoint_id FROM checkpoints "
+            "ORDER BY checkpoint_id DESC LIMIT 20"
         ).fetchall()
         conn.close()
         return [{"thread_id": r[0], "created_at": r[1]} for r in rows]

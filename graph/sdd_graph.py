@@ -5,11 +5,12 @@
 # Setup (run once):
 #   pip install langgraph langchain-anthropic
 
-import sqlite3
+import asyncio
+import aiosqlite
 from pathlib import Path
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from graph.state import SDDState
 from agents import spec_analyst, code_builder, test_writer, drift_monitor
@@ -18,7 +19,16 @@ from agents.code_builder import MAX_ITERATIONS
 CHECKPOINTS_DB = "checkpoints/sdd.db"
 
 Path("checkpoints").mkdir(exist_ok=True)
-checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINTS_DB, check_same_thread=False))
+
+
+async def _init_checkpointer() -> AsyncSqliteSaver:
+    conn = await aiosqlite.connect(CHECKPOINTS_DB)
+    saver = AsyncSqliteSaver(conn)
+    await saver.setup()
+    return saver
+
+
+checkpointer = asyncio.run(_init_checkpointer())
 
 
 # ---------------------------------------------------------------------------
