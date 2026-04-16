@@ -12,7 +12,8 @@ dist/
 build/
 .pytest_cache/
 
-# DB (Phase 3 checkpointer)
+# DB / checkpoints (Phase 3 checkpointer)
+checkpoints/
 *.db
 *.sqlite
 *.sqlite3

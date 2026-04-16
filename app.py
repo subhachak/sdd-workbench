@@ -6,6 +6,8 @@ Phase 2: replace /api/run with /api/run/stream (SSE + LangGraph).
 
 import os
 import json
+import uuid
+import sqlite3
 import webbrowser
 import threading
 import logging
@@ -22,7 +24,7 @@ import uvicorn
 from graph.state import initial_state
 from agents import spec_analyst, code_builder, test_writer, drift_monitor
 from agents.code_builder import MAX_ITERATIONS
-from graph.sdd_graph import sdd_app
+from graph.sdd_graph import sdd_app, CHECKPOINTS_DB
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="  %(levelname)s  %(message)s")
@@ -123,15 +125,16 @@ def _node_payload(node: str, state: dict) -> dict:
     return {}
 
 
-async def _stream_sdd(spec: str, language: str, test_framework: str) -> AsyncGenerator[str, None]:
+async def _stream_sdd(spec: str, language: str, test_framework: str, thread_id: str) -> AsyncGenerator[str, None]:
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload)}\n\n"
 
     try:
         state = initial_state(spec, language, test_framework)
         latest_state: dict = {}
+        config = {"configurable": {"thread_id": thread_id}}
 
-        async for event in sdd_app.astream_events(state, version="v2"):
+        async for event in sdd_app.astream_events(state, config=config, version="v2"):
             if event["event"] != "on_chain_end":
                 continue
 
@@ -157,6 +160,7 @@ async def _stream_sdd(spec: str, language: str, test_framework: str) -> AsyncGen
         lr = latest_state.get("lint_result") or {}
         yield sse({
             "type": "done",
+            "thread_id": thread_id,
             "data": {
                 "spec_breakdown":            latest_state.get("spec_breakdown"),
                 "spec_completeness_comment": latest_state.get("spec_completeness_comment"),
@@ -185,13 +189,28 @@ async def run_sdd_stream(
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise HTTPException(500, "ANTHROPIC_API_KEY not set — add to .env and restart")
 
-    logger.info(f"Stream start  lang={language}  framework={test_framework}  spec={len(spec)}chars")
+    thread_id = str(uuid.uuid4())
+    logger.info(f"Stream start  thread={thread_id}  lang={language}  framework={test_framework}  spec={len(spec)}chars")
 
     return StreamingResponse(
-        _stream_sdd(spec, language, test_framework),
+        _stream_sdd(spec, language, test_framework, thread_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/runs")
+def list_runs():
+    try:
+        conn = sqlite3.connect(CHECKPOINTS_DB)
+        rows = conn.execute(
+            "SELECT DISTINCT thread_id, created_at FROM checkpoints "
+            "ORDER BY created_at DESC LIMIT 20"
+        ).fetchall()
+        conn.close()
+        return [{"thread_id": r[0], "created_at": r[1]} for r in rows]
+    except Exception as exc:
+        raise HTTPException(500, f"Could not query checkpoints: {exc}")
 
 
 def _open_browser():

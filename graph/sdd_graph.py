@@ -1,14 +1,24 @@
 # graph/sdd_graph.py
 # Phase 2: LangGraph StateGraph wiring for the SDD pipeline.
+# Phase 3: SqliteSaver checkpointer for conversation persistence.
 #
 # Setup (run once):
 #   pip install langgraph langchain-anthropic
 
+import sqlite3
+from pathlib import Path
+
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 from graph.state import SDDState
 from agents import spec_analyst, code_builder, test_writer, drift_monitor
 from agents.code_builder import MAX_ITERATIONS
+
+CHECKPOINTS_DB = "checkpoints/sdd.db"
+
+Path("checkpoints").mkdir(exist_ok=True)
+checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINTS_DB, check_same_thread=False))
 
 
 # ---------------------------------------------------------------------------
@@ -61,4 +71,4 @@ _builder.add_edge("generate_tests", "run_drift")
 _builder.add_edge("run_drift", END)
 
 # Compiled app — import this in app.py and anywhere the graph is invoked.
-sdd_app = _builder.compile()
+sdd_app = _builder.compile(checkpointer=checkpointer)
