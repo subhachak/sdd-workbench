@@ -17,6 +17,8 @@ from agents import spec_analyst, code_builder, test_writer, drift_monitor
 from agents.code_builder import MAX_ITERATIONS
 
 CHECKPOINTS_DB = "checkpoints/sdd.db"
+GATE1_NODE = "parse_spec"
+GATE2_NODE = "generate_tests"
 
 Path("checkpoints").mkdir(exist_ok=True)
 
@@ -81,4 +83,7 @@ _builder.add_edge("generate_tests", "run_drift")
 _builder.add_edge("run_drift", END)
 
 # Compiled app — import this in app.py and anywhere the graph is invoked.
-sdd_app = _builder.compile(checkpointer=checkpointer)
+sdd_app = _builder.compile(
+    checkpointer=checkpointer,
+    interrupt_after=[GATE1_NODE, GATE2_NODE],
+)

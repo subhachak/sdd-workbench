@@ -1245,6 +1245,201 @@ function appendTraceRow(node, status, data) {
   tbody.appendChild(tr);
 }
 
+// ── Shared helpers ───────────────────────────────────────────────
+function resetBtn() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false;
+  btn.classList.remove('loading');
+  document.getElementById('runLabel').textContent = '▶ \u00a0Run Pipeline';
+}
+
+function showError(msg) {
+  document.getElementById('progressBar').classList.remove('visible');
+  document.getElementById('tabBar').classList.add('visible');
+  document.getElementById('p-spec').innerHTML = `<div class="error-box">Error: ${esc(msg)}</div>`;
+  document.getElementById('t-spec').classList.add('active');
+  document.getElementById('p-spec').classList.add('active');
+  setStatus('', 'Error');
+  resetBtn();
+}
+
+// ── HITL Gates ────────────────────────────────────────────────────
+let activeThreadId = null;
+let atGate = false;
+
+function showGate(msg) {
+  activeThreadId = msg.thread_id;
+  const isGate1 = msg.paused_after === 'generate_code';
+
+  document.getElementById('gateLabel').textContent =
+    isGate1 ? 'Gate 1 — Spec Review' : 'Gate 2 — Code Review';
+  document.getElementById('gateThreadId').textContent =
+    msg.thread_id ? msg.thread_id.slice(0, 8) : '';
+  document.getElementById('gateFeedback').value = '';
+  document.getElementById('gateApproveBtn').disabled  = false;
+  document.getElementById('gateRedirectBtn').disabled = false;
+
+  const d = msg.data || {};
+  let html = '';
+
+  if (isGate1 && d.spec_breakdown) {
+    const sb = d.spec_breakdown;
+    const ac = (sb.acceptance_criteria || []).map(a =>
+      `<li style="font-size:12px;color:var(--text-2);padding:3px 0;
+        padding-left:12px;position:relative">
+        <span style="position:absolute;left:0;color:var(--text-3)">›</span>
+        ${esc(a)}</li>`
+    ).join('');
+    html = `
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+        text-transform:uppercase;color:var(--text-3);margin-bottom:10px">
+        Acceptance Criteria — review before code generation starts
+      </div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:2px">
+        ${ac}
+      </ul>`;
+    if (d.spec_completeness_comment) {
+      html += `<div style="margin-top:14px;padding:10px 12px;
+        background:var(--surface2);border:1px solid var(--border);
+        font-size:12px;color:var(--text-2);line-height:1.6">
+        ${esc(d.spec_completeness_comment)}</div>`;
+    }
+  } else if (!isGate1 && d.implementation) {
+    html = `
+      <div style="font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+        text-transform:uppercase;color:var(--text-3);margin-bottom:10px">
+        Implementation — review before run completes
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);
+        font-family:var(--mono);font-size:11px;line-height:1.8;padding:14px;
+        white-space:pre-wrap;max-height:320px;overflow-y:auto;color:var(--text)">
+        ${esc(d.implementation)}</div>`;
+  }
+
+  document.getElementById('gateContent').innerHTML = html ||
+    '<div style="color:var(--text-3);font-size:12px">Review and approve to continue.</div>';
+
+  const overlay = document.getElementById('gateOverlay');
+  overlay.style.display = 'flex';
+}
+
+function hideGate() {
+  document.getElementById('gateOverlay').style.display = 'none';
+}
+
+async function submitGate(action) {
+  const feedback = document.getElementById('gateFeedback').value.trim();
+  if (action === 'redirect' && !feedback) {
+    document.getElementById('gateFeedback').focus();
+    return;
+  }
+
+  atGate = false;
+  document.getElementById('gateApproveBtn').disabled  = true;
+  document.getElementById('gateRedirectBtn').disabled = true;
+  hideGate();
+
+  setStatus('running', action === 'approve' ? 'Resuming pipeline…' : 'Redirecting agent…');
+  document.getElementById('progressBar').classList.add('visible');
+
+  if (activeEs) { activeEs.close(); activeEs = null; }
+
+  try {
+    const res = await fetch('/api/resume', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({ thread_id: activeThreadId, action, feedback }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Resume failed');
+    }
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let msg;
+        try { msg = JSON.parse(line.slice(6)); } catch { continue; }
+        handleSseMessage(msg);
+      }
+    }
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+// ── SSE message handler (shared by EventSource + resume fetch) ────
+function handleSseMessage(msg) {
+  if (msg.type === 'node_done') {
+    const { node, status, data } = msg;
+    appendTraceRow(node, status, data);
+
+    if (node === 'parse_spec') {
+      setStep(2);
+    } else if (node === 'generate_code') {
+      if (data.lint_passed || data.iteration_count >= 3) {
+        document.querySelector('#ps2 .ps-name').textContent = 'Code Builder';
+        setStep(3);
+      } else {
+        setStep(2);
+        if (data.iteration_count > 1) {
+          document.querySelector('#ps2 .ps-name').textContent = `Code Builder \u21ba${data.iteration_count}`;
+        }
+      }
+    } else if (node === 'generate_tests') {
+      setStep(4);
+    } else if (node === 'run_drift') {
+      setStep(5);
+    }
+
+  } else if (msg.type === 'done') {
+    if (activeEs) { activeEs.close(); activeEs = null; }
+    const data = msg.data;
+    const lang  = document.getElementById('langSel').value;
+    const frame = document.getElementById('frameSel').value;
+
+    renderSpec(data);
+    renderCode(data.implementation, lang);
+    renderTests(data.tests, frame);
+    renderDrift(data.drift_analysis);
+
+    document.getElementById('progressBar').classList.remove('visible');
+    document.getElementById('tabBar').classList.add('visible');
+    document.getElementById('footerStrip').classList.add('visible');
+    document.getElementById('t-spec').classList.add('active');
+    document.getElementById('p-spec').classList.add('active');
+
+    const m = data._meta || {};
+    document.getElementById('fsMeta-lang').textContent  = lang;
+    document.getElementById('fsMeta-frame').textContent = frame;
+    document.getElementById('fsMeta-iter').textContent  = m.iterations ?? '—';
+    document.getElementById('fsMeta-lint').textContent  = m.lint_passed ? '✓ passed' : '⚠ warnings';
+
+    setStatus('ready', 'Pipeline complete');
+    loadRunHistory();
+    resetBtn();
+
+  } else if (msg.type === 'error') {
+    if (activeEs) { activeEs.close(); activeEs = null; }
+    showError(msg.message);
+
+  } else if (msg.type === 'gate') {
+    atGate = true;
+    document.getElementById('progressBar').classList.remove('visible');
+    showGate(msg);
+  }
+}
+
 // ── Main run ─────────────────────────────────────────────────────
 function run() {
   const spec = document.getElementById('specInput').value.trim();
@@ -1254,6 +1449,7 @@ function run() {
   const frame = document.getElementById('frameSel').value;
   const btn   = document.getElementById('runBtn');
 
+  atGate = false;
   // Close any in-flight stream before starting a new one
   if (activeEs) { activeEs.close(); activeEs = null; }
 
@@ -1290,89 +1486,65 @@ function run() {
   const es = new EventSource('/api/run/stream?' + params);
   activeEs = es;
 
-  function resetBtn() {
-    btn.disabled = false;
-    btn.classList.remove('loading');
-    document.getElementById('runLabel').textContent = '▶ \u00a0Run Pipeline';
-  }
-
-  function showError(msg) {
-    document.getElementById('progressBar').classList.remove('visible');
-    document.getElementById('tabBar').classList.add('visible');
-    document.getElementById('p-spec').innerHTML = `<div class="error-box">Error: ${esc(msg)}</div>`;
-    document.getElementById('t-spec').classList.add('active');
-    document.getElementById('p-spec').classList.add('active');
-    setStatus('', 'Error');
-    resetBtn();
-  }
-
   es.onmessage = function(event) {
     let msg;
     try { msg = JSON.parse(event.data); } catch { return; }
-
-    if (msg.type === 'node_done') {
-      const { node, status, data } = msg;
-      appendTraceRow(node, status, data);
-
-      if (node === 'parse_spec') {
-        setStep(2);
-
-      } else if (node === 'generate_code') {
-        if (data.lint_passed || data.iteration_count >= 3) {
-          document.querySelector('#ps2 .ps-name').textContent = 'Code Builder';
-          setStep(3);
-        } else {
-          // Lint failed, retries remain — stay on step 2
-          setStep(2);
-          if (data.iteration_count > 1) {
-            document.querySelector('#ps2 .ps-name').textContent = `Code Builder \u21ba${data.iteration_count}`;
-          }
-        }
-
-      } else if (node === 'generate_tests') {
-        setStep(4);
-
-      } else if (node === 'run_drift') {
-        setStep(5);
-      }
-
-    } else if (msg.type === 'done') {
-      es.close(); activeEs = null;
-      const data = msg.data;
-
-      renderSpec(data);
-      renderCode(data.implementation, lang);
-      renderTests(data.tests, frame);
-      renderDrift(data.drift_analysis);
-
-      document.getElementById('progressBar').classList.remove('visible');
-      document.getElementById('tabBar').classList.add('visible');
-      document.getElementById('footerStrip').classList.add('visible');
-      document.getElementById('t-spec').classList.add('active');
-      document.getElementById('p-spec').classList.add('active');
-
-      const m = data._meta || {};
-      document.getElementById('fsMeta-lang').textContent  = lang;
-      document.getElementById('fsMeta-frame').textContent = frame;
-      document.getElementById('fsMeta-iter').textContent  = m.iterations ?? '—';
-      document.getElementById('fsMeta-lint').textContent  = m.lint_passed ? '✓ passed' : '⚠ warnings';
-
-      setStatus('ready', 'Pipeline complete');
-      loadRunHistory();
-      resetBtn();
-
-    } else if (msg.type === 'error') {
-      es.close(); activeEs = null;
-      showError(msg.message);
-    }
+    handleSseMessage(msg);
   };
 
   es.onerror = function() {
+    if (atGate) return;
     if (es.readyState === EventSource.CLOSED) return;
     es.close(); activeEs = null;
     showError('Connection lost. Check the server.');
   };
 }
 </script>
+
+<!-- ── Gate overlay ─────────────────────────────────────────────── -->
+<div id="gateOverlay" style="display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.7);z-index:500;
+  align-items:center;justify-content:center;">
+  <div id="gatePanel" style="background:var(--surface);border:1px solid
+    var(--border2);width:560px;max-width:90vw;max-height:80vh;
+    overflow-y:auto;display:flex;flex-direction:column;">
+
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;">
+      <div style="font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+        text-transform:uppercase;color:var(--accent)" id="gateLabel">
+        Gate 1 — Spec Review
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-3)"
+        id="gateThreadId"></div>
+    </div>
+
+    <div style="padding:20px;flex:1" id="gateContent"></div>
+
+    <div style="padding:16px 20px;border-top:1px solid var(--border);
+      display:flex;flex-direction:column;gap:10px">
+      <textarea id="gateFeedback" placeholder="Optional: redirect feedback
+        for the agent (leave blank to approve)..."
+        style="width:100%;height:72px;background:var(--surface2);
+        border:1px solid var(--border);color:var(--text);
+        font-family:var(--mono);font-size:11px;padding:10px;
+        resize:none;outline:none"></textarea>
+      <div style="display:flex;gap:8px">
+        <button id="gateApproveBtn" onclick="submitGate('approve')"
+          style="flex:1;padding:10px;background:var(--green);border:none;
+          color:#0a1a0f;font-family:var(--sans);font-size:13px;
+          font-weight:600;cursor:pointer">
+          ✓ Approve
+        </button>
+        <button id="gateRedirectBtn" onclick="submitGate('redirect')"
+          style="flex:1;padding:10px;background:var(--surface3);
+          border:1px solid var(--border2);color:var(--text);
+          font-family:var(--sans);font-size:13px;cursor:pointer">
+          ↩ Redirect with Feedback
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>

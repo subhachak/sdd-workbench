@@ -24,7 +24,7 @@ import uvicorn
 from graph.state import initial_state
 from agents import spec_analyst, code_builder, test_writer, drift_monitor
 from agents.code_builder import MAX_ITERATIONS
-from graph.sdd_graph import sdd_app, CHECKPOINTS_DB
+from graph.sdd_graph import sdd_app, CHECKPOINTS_DB, GATE1_NODE, GATE2_NODE
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="  %(levelname)s  %(message)s")
@@ -157,6 +157,25 @@ async def _stream_sdd(spec: str, language: str, test_framework: str, thread_id: 
                 yield sse({"type": "error", "message": output.get("error_message", "unknown error")})
                 return
 
+        # Check if the graph paused at a HITL gate
+        final_state = await sdd_app.aget_state(config)
+        if final_state and final_state.next:
+            next_node  = final_state.next[0]
+            state_vals = final_state.values or {}
+            gate_data  = {
+                "spec_breakdown":            state_vals.get("spec_breakdown"),
+                "spec_completeness_comment": state_vals.get("spec_completeness_comment"),
+                "implementation":            state_vals.get("implementation"),
+                "drift_analysis":            state_vals.get("drift_analysis"),
+            }
+            yield sse({
+                "type":         "gate",
+                "thread_id":    thread_id,
+                "paused_after": next_node,
+                "data":         gate_data,
+            })
+            return
+
         lr = latest_state.get("lint_result") or {}
         yield sse({
             "type": "done",
@@ -194,6 +213,113 @@ async def run_sdd_stream(
 
     return StreamingResponse(
         _stream_sdd(spec, language, test_framework, thread_id),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _resume_stream(thread_id: str) -> AsyncGenerator[str, None]:
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    config = {"configurable": {"thread_id": thread_id}}
+    latest_state: dict = {}
+
+    try:
+        async for event in sdd_app.astream_events(None, config=config, version="v2"):
+            if event["event"] != "on_chain_end":
+                continue
+            node = event.get("name")
+            if node not in ("parse_spec", "generate_code", "generate_tests", "run_drift"):
+                continue
+
+            output = event.get("data", {}).get("output") or {}
+            latest_state = output
+            status = "error" if output.get("status") == "error" else "ok"
+
+            yield sse({
+                "type":   "node_done",
+                "node":   node,
+                "status": status,
+                "data":   _node_payload(node, output),
+            })
+
+            if status == "error":
+                yield sse({"type": "error", "message": output.get("error_message", "")})
+                return
+
+        # Check if paused at another gate
+        final_state = await sdd_app.aget_state(config)
+        if final_state and final_state.next:
+            next_node  = final_state.next[0]
+            state_vals = final_state.values or {}
+            gate_data  = {
+                "spec_breakdown":            state_vals.get("spec_breakdown"),
+                "spec_completeness_comment": state_vals.get("spec_completeness_comment"),
+                "implementation":            state_vals.get("implementation"),
+                "drift_analysis":            state_vals.get("drift_analysis"),
+            }
+            yield sse({
+                "type":         "gate",
+                "thread_id":    thread_id,
+                "paused_after": next_node,
+                "data":         gate_data,
+            })
+            return
+
+        lr = latest_state.get("lint_result") or {}
+        yield sse({
+            "type":      "done",
+            "thread_id": thread_id,
+            "data": {
+                "spec_breakdown":            latest_state.get("spec_breakdown"),
+                "spec_completeness_comment": latest_state.get("spec_completeness_comment"),
+                "implementation":            latest_state.get("implementation"),
+                "tests":                     latest_state.get("tests"),
+                "drift_analysis":            latest_state.get("drift_analysis"),
+                "_meta": {
+                    "iterations":  latest_state.get("iteration_count"),
+                    "lint_passed": latest_state.get("lint_passed"),
+                    "lint_errors": lr.get("errors", []),
+                },
+            },
+        })
+
+    except Exception as exc:
+        logger.exception("Resume stream error")
+        yield sse({"type": "error", "message": str(exc)})
+
+
+@app.post("/api/resume")
+async def resume_run(body: dict):
+    """
+    Resume a paused graph from a HITL gate.
+    Body: {"thread_id": str, "action": "approve"|"redirect", "feedback": str}
+    """
+    thread_id = body.get("thread_id")
+    action    = body.get("action")
+    feedback  = body.get("feedback", "")
+
+    if not thread_id or not action:
+        raise HTTPException(400, "thread_id and action are required")
+
+    config = {"configurable": {"thread_id": thread_id}}
+
+    state = await sdd_app.aget_state(config)
+    if not state:
+        raise HTTPException(404, "Run not found")
+
+    if action == "redirect" and feedback:
+        await sdd_app.aupdate_state(
+            config,
+            {"human_feedback": feedback},
+            as_node="parse_spec",
+        )
+
+    logger.info(f"Resume  thread={thread_id}  action={action}")
+
+    return StreamingResponse(
+        _resume_stream(thread_id),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

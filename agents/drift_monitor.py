@@ -25,9 +25,9 @@ Respond ONLY with valid JSON — no markdown, no fences.
 ]}
 
 Status values:
-- OK:   fully and clearly implemented
-- WARN: partially implemented or ambiguous
-- FAIL: missing, contradicted, or not implemented
+- OK:   criterion is fully implemented — default to this if evidence is present in the code
+- WARN: criterion is only partially implemented or implementation is ambiguous
+- FAIL: criterion is completely absent from the implementation — only use this if there is NO evidence of the criterion in the code
 
 Rules:
 - One entry per criterion — no more, no less
@@ -41,6 +41,9 @@ async def run(state: SDDState) -> SDDState:
         state["status"] = "error"
         state["error_message"] = "Drift Monitor: implementation missing"
         return state
+
+    logger.info(f"Drift Monitor: implementation length = {len(state.get('implementation', ''))}")
+    logger.info(f"Drift Monitor: acceptance criteria count = {len(state.get('spec_breakdown', {}).get('acceptance_criteria', []))}")
 
     sb = state["spec_breakdown"]
     ac_numbered = "\n".join(

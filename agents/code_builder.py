@@ -49,7 +49,10 @@ async def run(state: SDDState) -> SDDState:
 
     def bullet(items): return "\n".join(f"  - {i}" for i in items)
 
-    if state["iteration_count"] == 0:
+    has_feedback   = bool(state.get("human_feedback"))
+    has_lint_error = state["iteration_count"] > 0 and state.get("lint_result")
+
+    if not has_feedback and not has_lint_error:
         user = (
             f"Language: {state['language']}\n\n"
             f"Acceptance Criteria:\n{bullet(sb.get('acceptance_criteria', []))}\n\n"
@@ -59,10 +62,16 @@ async def run(state: SDDState) -> SDDState:
             f"Outputs: {', '.join(sb.get('outputs', []))}"
         )
     else:
-        errors = "\n".join(state["lint_result"]["errors"])
+        if has_lint_error:
+            errors = "\n".join(state["lint_result"]["errors"])
+        else:
+            errors = ""
+
         feedback = state.get("human_feedback", "")
         if feedback:
-            errors += f"\n\nReviewer feedback:\n{feedback}"
+            errors = (errors + f"\n\nReviewer feedback:\n{feedback}") if errors else f"Reviewer feedback:\n{feedback}"
+
+        state["human_feedback"] = None
         user = _RETRY.format(errors=errors, code=state.get("implementation", ""))
 
     try:
